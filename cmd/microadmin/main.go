@@ -13,6 +13,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -51,7 +52,8 @@ func main() {
 	ctx := context.WithValue(context.Background(), telemetry.TelemetryContextKey, xTelemetry)
 
 	// Create a Kubernetes clientset
-	clientset, err := createClientset(ctx)
+	//clientset, err := createClientset(ctx)
+	clientset, err := createClientsetNew(ctx)
 	if err != nil {
 		xTelemetry.Error(ctx, "Main::Failed to create Kubernetes clientset", telemetry.String("Error", err.Error()))
 		panic(err)
@@ -139,6 +141,27 @@ func createClientset(ctx context.Context) (*kubernetes.Clientset, error) {
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		xTelemetry.Error(ctx, "Failed to load Kubernetes config", telemetry.String("Error", err.Error()))
+		return nil, err
+	}
+
+	// Create a Kubernetes clientset using the loaded configuration
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		xTelemetry.Error(ctx, "Failed to create Kubernetes clientset", telemetry.String("Error", err.Error()))
+		return nil, err
+	}
+
+	xTelemetry.Info(ctx, "Kubernetes clientset created successfully")
+	return clientset, nil
+}
+
+func createClientsetNew(ctx context.Context) (*kubernetes.Clientset, error) {
+	xTelemetry := telemetry.GetXTelemetryClient(ctx)
+
+	// Load Kubernetes config from in-cluster configuration
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		xTelemetry.Error(ctx, "Failed to load in-cluster Kubernetes config", telemetry.String("Error", err.Error()))
 		return nil, err
 	}
 
