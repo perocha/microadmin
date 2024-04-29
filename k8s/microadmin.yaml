@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microadmin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: microadmin
+  template:
+    metadata:
+      labels:
+        app: microadmin
+    spec:
+      containers:
+      - name: microadmin
+        image: perocha.azurecr.io/microadmin:latest
+        env:
+        - name: APPCONFIGURATION_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: appconfiguration
+              key: appconfigurationconnectionstring
