@@ -28,3 +28,4 @@ jobs:
       with:
         manifests: |
           k8s/microadmin.yaml
+          k8s/microadmin-service.yaml
