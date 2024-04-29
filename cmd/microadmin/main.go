@@ -131,7 +131,9 @@ func createClientset(ctx context.Context) (*kubernetes.Clientset, error) {
 	xTelemetry := telemetry.GetXTelemetryClient(ctx)
 
 	// Path to the Kubernetes configuration file
-	kubeconfig := filepath.Join(os.Getenv("USERPROFILE"), ".kube", "config")
+	//	kubeconfig := filepath.Join(os.Getenv("USERPROFILE"), ".kube", "config")
+	kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
+	xTelemetry.Info(ctx, "Kubeconfig file", telemetry.String("Kubeconfig", kubeconfig))
 
 	// Load Kubernetes config from file
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
