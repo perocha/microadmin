@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -20,23 +22,49 @@ func main() {
 	}
 
 	// List pods matching a specific label selector
-	pods, err := clientset.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{
-		LabelSelector: "app=order-processing",
-	})
+	pods, err := listPods(clientset, "producer")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error listing pods: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Send a request to each pod to refresh configuration
-	for _, pod := range pods.Items {
-		// For demonstration purposes, we'll print the pod's name
-		fmt.Println("Pod:", pod.Name)
-
-		// You can send an HTTP request to the pod here to trigger configuration refresh
-		// For example:
-		// sendRefreshRequest(pod.Status.PodIP)
+	// Iterate over the pods and send a refresh request to each one
+	err = refreshConfig(pods)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error sending refresh request: %v\n", err)
+		os.Exit(1)
 	}
+}
+
+func listPods(clientset *kubernetes.Clientset, appname string) (*v1.PodList, error) {
+	// List pods matching a specific label selector
+	pods, err := clientset.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{
+		LabelSelector: "app=" + appname,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods: %v", err)
+	}
+
+	return pods, nil
+}
+
+// Iterate over the pods and send a refresh request to each one
+func refreshConfig(pods *v1.PodList) error {
+	// Iterate over the pods and send a refresh request to each one
+	for _, pod := range pods.Items {
+		podIP := pod.Status.PodIP
+		if podIP == "" {
+			fmt.Printf("Pod %s does not have an IP address\n", pod.Name)
+			continue
+		}
+
+		err := sendRefreshRequest(podIP)
+		if err != nil {
+			fmt.Printf("Error sending refresh request to pod %s: %v\n", podIP, err)
+		}
+	}
+
+	return nil
 }
 
 func createClientset() (*kubernetes.Clientset, error) {
@@ -58,8 +86,19 @@ func createClientset() (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
-func sendRefreshRequest(podIP string) {
-	// Send an HTTP request to the pod's IP address to trigger configuration refresh
-	// For demonstration purposes, we'll simply print a message
-	fmt.Printf("Sending refresh request to pod %s\n", podIP)
+func sendRefreshRequest(podIP string) error {
+	// Send an HTTP POST request to the pod's IP address to trigger configuration refresh
+	url := fmt.Sprintf("http://%s:8080/refresh-config", podIP)
+	resp, err := http.Post(url, "application/json", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	fmt.Printf("Refresh request sent to pod %s\n", podIP)
+	return nil
 }
