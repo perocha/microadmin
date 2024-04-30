@@ -46,7 +46,7 @@ func main() {
 
 	k8scli, err := service.InitializePodManager(ctx)
 	if err != nil {
-		xTelemetry.Error(ctx, "Main::Failed to initialize PodManager", telemetry.String("Error", err.Error()))
+		xTelemetry.Error(ctx, "Main::Failed to initialize Pod Manager", telemetry.String("Error", err.Error()))
 		panic(err)
 	}
 

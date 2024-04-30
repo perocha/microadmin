@@ -31,7 +31,7 @@ func InitializePodManager(ctx context.Context) (*PodManagerImpl, error) {
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 
 	if err != nil {
-		xTelemetry.Error(ctx, "Failed to load Kubernetes config", telemetry.String("Error", err.Error()))
+		xTelemetry.Info(ctx, "Failed to load Kubernetes config, load config from in-cluster", telemetry.String("Error", err.Error()))
 
 		// Failed to load k8s config file, now try to load Kubernetes config from in-cluster configuration
 		config, err = rest.InClusterConfig()
