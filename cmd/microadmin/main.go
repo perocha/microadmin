@@ -125,7 +125,8 @@ func listPods(ctx context.Context, clientset *kubernetes.Clientset, appname stri
 		return nil, err
 	}
 
-	xTelemetry.Info(ctx, "Pods listed successfully", telemetry.Int("PodCount", len(pods.Items)))
+	//xTelemetry.Info(ctx, "Pods listed successfully", telemetry.Int("PodCount", len(pods.Items)))
+	xTelemetry.Info(ctx, "Pods listed successfully")
 	return pods, nil
 }
 
@@ -133,8 +134,8 @@ func createClientset(ctx context.Context) (*kubernetes.Clientset, error) {
 	xTelemetry := telemetry.GetXTelemetryClient(ctx)
 
 	// Path to the Kubernetes configuration file
-	//	kubeconfig := filepath.Join(os.Getenv("USERPROFILE"), ".kube", "config")
-	kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
+	kubeconfig := filepath.Join(os.Getenv("USERPROFILE"), ".kube", "config")
+	// kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
 	xTelemetry.Info(ctx, "Kubeconfig file", telemetry.String("Kubeconfig", kubeconfig))
 
 	// Load Kubernetes config from file
