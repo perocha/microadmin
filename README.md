@@ -1,6 +1,10 @@
 # microadmin
 Admin k8s microservice in go
 
+# Architecture
+
+![alt text](docs/microadmin_arch.png)
+
 # Permissions needed to execute this microservice
 
 ## Service account
