@@ -12,6 +12,7 @@ spec:
       labels:
         app: microadmin
     spec:
+      serviceAccountName: microadmin-account
       containers:
       - name: microadmin
         image: perocha.azurecr.io/microadmin:latest
