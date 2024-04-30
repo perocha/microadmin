@@ -19,6 +19,7 @@ type PodManagerImpl struct {
 	k8scli *kubernetes.Clientset
 }
 
+// Initializes a new PodManagerImpl object
 func InitializePodManager(ctx context.Context) (*PodManagerImpl, error) {
 	xTelemetry := telemetry.GetXTelemetryClient(ctx)
 
@@ -51,6 +52,25 @@ func InitializePodManager(ctx context.Context) (*PodManagerImpl, error) {
 	}, nil
 }
 
+// List all pods for a specific application
+func (p *PodManagerImpl) ListPods(ctx context.Context, appname string) (*v1.PodList, error) {
+	xTelemetry := telemetry.GetXTelemetryClient(ctx)
+
+	// List pods matching a specific label selector
+	pods, err := p.k8scli.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{
+		LabelSelector: "app=" + appname,
+	})
+	if err != nil {
+		xTelemetry.Error(ctx, "listPods::Failed to list pods", telemetry.String("Error", err.Error()))
+		return nil, err
+	}
+
+	//xTelemetry.Info(ctx, "Pods listed successfully", telemetry.Int("PodCount", len(pods.Items)))
+	xTelemetry.Info(ctx, "Pods listed successfully")
+	return pods, nil
+}
+
+// Send a refresh request to all pods for a specific application
 func (p *PodManagerImpl) RefreshConfig(ctx context.Context, appname string) error {
 	xTelemetry := telemetry.GetXTelemetryClient(ctx)
 
@@ -76,27 +96,11 @@ func (p *PodManagerImpl) RefreshConfig(ctx context.Context, appname string) erro
 		}
 	}
 
-	xTelemetry.Info(ctx, "Refresh request sent to all pods", telemetry.String("AppName", appname))
+	xTelemetry.Debug(ctx, "Refresh request sent to all pods", telemetry.String("Appname", appname))
 	return nil
 }
 
-func (p *PodManagerImpl) ListPods(ctx context.Context, appname string) (*v1.PodList, error) {
-	xTelemetry := telemetry.GetXTelemetryClient(ctx)
-
-	// List pods matching a specific label selector
-	pods, err := p.k8scli.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{
-		LabelSelector: "app=" + appname,
-	})
-	if err != nil {
-		xTelemetry.Error(ctx, "listPods::Failed to list pods", telemetry.String("Error", err.Error()))
-		return nil, err
-	}
-
-	//xTelemetry.Info(ctx, "Pods listed successfully", telemetry.Int("PodCount", len(pods.Items)))
-	xTelemetry.Info(ctx, "Pods listed successfully")
-	return pods, nil
-}
-
+// Send a http POST refresh request to a specific pod
 func (p *PodManagerImpl) sendRefreshRequest(ctx context.Context, podIP string) error {
 	xTelemetry := telemetry.GetXTelemetryClient(ctx)
 
@@ -114,6 +118,6 @@ func (p *PodManagerImpl) sendRefreshRequest(ctx context.Context, podIP string) e
 		return err
 	}
 
-	xTelemetry.Info(ctx, "Refresh request sent to pod", telemetry.String("PodIP", podIP))
+	xTelemetry.Debug(ctx, "Refresh request sent to pod", telemetry.String("PodIP", podIP))
 	return nil
 }

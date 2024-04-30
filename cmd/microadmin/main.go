@@ -58,6 +58,8 @@ func main() {
 			return
 		}
 
+		xTelemetry.Info(ctx, "Main::Configuration refreshed successfully", telemetry.String("Appname", "producer"))
+
 		w.WriteHeader(http.StatusOK)
 	})
 
