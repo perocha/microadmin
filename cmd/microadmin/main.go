@@ -3,8 +3,12 @@ package main
 import (
 	"context"
 	"log"
-	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/perocha/goadapters/comms/httpadapter"
 	"github.com/perocha/goutils/pkg/telemetry"
 	"github.com/perocha/microadmin/pkg/config"
 	"github.com/perocha/microadmin/pkg/service"
@@ -36,7 +40,7 @@ func main() {
 	}
 
 	// Initialize telemetry package
-	telemetryConfig := telemetry.NewXTelemetryConfig(cfg.AppInsightsInstrumentationKey, SERVICE_NAME, "info", 1)
+	telemetryConfig := telemetry.NewXTelemetryConfig(cfg.AppInsightsInstrumentationKey, SERVICE_NAME, "debug", 1)
 	xTelemetry, err := telemetry.NewXTelemetry(telemetryConfig)
 	if err != nil {
 		log.Fatalf("Main::Fatal error::Failed to initialize XTelemetry %s\n", err.Error())
@@ -44,35 +48,43 @@ func main() {
 	// Add telemetry object to the context, so that it can be reused across the application
 	ctx := context.WithValue(context.Background(), telemetry.TelemetryContextKey, xTelemetry)
 
-	k8scli, err := service.InitializePodManager(ctx)
+	// Initialize the http adapter for publishing messages
+	httpSendAdapter, err := httpadapter.HttpSenderInit(ctx, "", "", "")
+	if err != nil {
+		xTelemetry.Error(ctx, "Main::Failed to initialize HTTP Publisher", telemetry.String("Error", err.Error()))
+		panic(err)
+	}
+
+	// Initialize the http adapter for consuming messages
+	endpoint := httpadapter.NewEndpoint("localhost", "8080", "/")
+	httpServerAdapter, err := httpadapter.HTTPServerAdapterInit(ctx, endpoint)
+	if err != nil {
+		xTelemetry.Error(ctx, "Main::Failed to initialize HTTP Consumer", telemetry.String("Error", err.Error()))
+		panic(err)
+	}
+
+	// Create a channel to listen for termination signals
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+
+	// Initialize and start the pod manager
+	podManager, err := service.InitializePodManager(ctx, httpSendAdapter, httpServerAdapter)
 	if err != nil {
 		xTelemetry.Error(ctx, "Main::Failed to initialize Pod Manager", telemetry.String("Error", err.Error()))
 		panic(err)
 	}
+	go podManager.Start(ctx, signals)
 
-	// Define an HTTP handler function for refreshing configuration
-	http.HandleFunc("/refresh-config", func(w http.ResponseWriter, r *http.Request) {
-		err := k8scli.RefreshConfig(ctx, "producer")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Wait for a termination signal
+	for {
+		select {
+		case <-signals:
+			// Termination signal received
+			xTelemetry.Info(ctx, "Main::Received termination signal")
 			return
+		case <-time.After(2 * time.Minute):
+			// Do nothing
+			xTelemetry.Debug(ctx, "Main::Waiting for termination signal")
 		}
-
-		xTelemetry.Info(ctx, "Main::Configuration refreshed successfully", telemetry.String("Appname", "producer"))
-
-		w.WriteHeader(http.StatusOK)
-	})
-
-	// Start an HTTP server
-	go func() {
-		err := http.ListenAndServe(":"+cfg.HttpPortNumber, nil)
-		if err != nil {
-			xTelemetry.Error(ctx, "Main::Failed to start HTTP server", telemetry.String("Error", err.Error()))
-			panic(err)
-		}
-	}()
-
-	// Wait forever
-	xTelemetry.Info(ctx, "Main::Microadmin started successfully", telemetry.String("HttpPortNumber", cfg.HttpPortNumber))
-	select {}
+	}
 }

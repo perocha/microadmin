@@ -9,6 +9,7 @@ import (
 type MicroserviceConfig struct {
 	configClient                  *config.Config
 	AppInsightsInstrumentationKey string
+	HttpEndpointURL               string
 	HttpPortNumber                string
 }
 
@@ -40,6 +41,10 @@ func InitializeConfig() (*MicroserviceConfig, error) {
 // Refresh configuration, with the latest values from the configuration store
 func (cfg *MicroserviceConfig) RefreshConfig() error {
 	if err := retrieveConfigValue(cfg, "APPINSIGHTS_INSTRUMENTATIONKEY", &cfg.AppInsightsInstrumentationKey); err != nil {
+		return err
+	}
+
+	if err := retrieveConfigValue(cfg, "HTTP_ENDPOINT_URL", &cfg.HttpEndpointURL); err != nil {
 		return err
 	}
 

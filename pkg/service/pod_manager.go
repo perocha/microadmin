@@ -2,11 +2,12 @@ package service
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 
+	"github.com/perocha/goadapters/comms"
+	"github.com/perocha/goadapters/comms/httpadapter"
+	"github.com/perocha/goadapters/messaging"
 	"github.com/perocha/goutils/pkg/telemetry"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,11 +17,13 @@ import (
 )
 
 type PodManagerImpl struct {
-	k8scli *kubernetes.Clientset
+	k8scli       *kubernetes.Clientset
+	httpSender   comms.CommsSystem
+	httpReceiver comms.CommsSystem
 }
 
 // Initializes a new PodManagerImpl object
-func InitializePodManager(ctx context.Context) (*PodManagerImpl, error) {
+func InitializePodManager(ctx context.Context, httpSender comms.CommsSystem, httpReceiver comms.CommsSystem) (*PodManagerImpl, error) {
 	xTelemetry := telemetry.GetXTelemetryClient(ctx)
 
 	// First we try to load the Kubernetes configuration from the in-cluster configuration
@@ -47,9 +50,67 @@ func InitializePodManager(ctx context.Context) (*PodManagerImpl, error) {
 		return nil, err
 	}
 
+	// Initialize the HTTP server for receiving messages
+	receiverEndpoint := httpadapter.NewEndpoint("localhost", "8080", "/test")
+	err = httpReceiver.RegisterEndPoint(ctx, receiverEndpoint, RefreshConfiguration)
+	if err != nil {
+		return nil, err
+	}
+
+	anotherEndpoint := httpadapter.NewEndpoint("localhost", "8080", "/prueba")
+	err = httpReceiver.RegisterEndPoint(ctx, anotherEndpoint, TestCallback)
+	if err != nil {
+		return nil, err
+	}
+
 	return &PodManagerImpl{
-		k8scli: clientset,
+		k8scli:       clientset,
+		httpSender:   httpSender,
+		httpReceiver: httpReceiver,
 	}, nil
+}
+
+// RefreshConfiguration is a callback function that is called when a refresh request is received
+func RefreshConfiguration(w comms.ResponseWriter, r comms.Request) {
+	w.WriteHeader(int(httpadapter.StatusOK))
+	w.Write([]byte("Hello World 1"))
+}
+
+func TestCallback(w comms.ResponseWriter, r comms.Request) {
+	w.WriteHeader(int(httpadapter.StatusOK))
+	w.Write([]byte("Hello World 2"))
+}
+
+// Start the pod manager
+func (p *PodManagerImpl) Start(ctx context.Context, signals <-chan os.Signal) error {
+	xTelemetry := telemetry.GetXTelemetryClient(ctx)
+	xTelemetry.Info(ctx, "PodManager started")
+
+	// Start the HTTP server for receiving messages
+	err := p.httpReceiver.Start(ctx)
+	if err != nil {
+		xTelemetry.Error(ctx, "Failed to start HTTP server", telemetry.String("Error", err.Error()))
+		return err
+	}
+
+	//
+	for range signals {
+		// Termination signal received
+		xTelemetry.Info(ctx, "Received termination signal")
+		p.Stop(ctx)
+		return nil
+	}
+
+	return nil
+}
+
+// Stop the pod manager
+func (p *PodManagerImpl) Stop(ctx context.Context) {
+	xTelemetry := telemetry.GetXTelemetryClient(ctx)
+	xTelemetry.Info(ctx, "PodManager stopped")
+
+	// Close the Kubernetes clientset
+	p.k8scli = nil
 }
 
 // List all pods for a specific application
@@ -89,35 +150,18 @@ func (p *PodManagerImpl) RefreshConfig(ctx context.Context, appname string) erro
 			continue
 		}
 
-		err := p.sendRefreshRequest(ctx, podIP)
+		msg := messaging.NewMessage("", nil, "status", "command", nil)
+		endpoint := httpadapter.NewEndpoint(podIP, "8081", "/refresh-config")
+		p.httpSender.SetEndPoint(ctx, endpoint)
+		err := p.httpSender.SendRequest(ctx, msg)
 		if err != nil {
-			xTelemetry.Error(ctx, "Failed to send refresh request to pod", telemetry.String("PodName", pod.Name), telemetry.String("Error", err.Error()))
+			xTelemetry.Error(ctx, "Failed to send refresh request to pod", telemetry.String("PodIP", podIP), telemetry.String("Error", err.Error()))
 			return err
 		}
+
+		xTelemetry.Debug(ctx, "Refresh request sent to pod", telemetry.String("PodIP", podIP))
 	}
 
 	xTelemetry.Debug(ctx, "Refresh request sent to all pods", telemetry.String("Appname", appname))
-	return nil
-}
-
-// Send a http POST refresh request to a specific pod
-func (p *PodManagerImpl) sendRefreshRequest(ctx context.Context, podIP string) error {
-	xTelemetry := telemetry.GetXTelemetryClient(ctx)
-
-	// Send an HTTP POST request to the pod's IP address to trigger configuration refresh
-	url := fmt.Sprintf("http://%s:8081/refresh-config", podIP)
-	resp, err := http.Post(url, "application/json", nil)
-	if err != nil {
-		xTelemetry.Error(ctx, "Failed to send refresh request to pod", telemetry.String("PodIP", podIP), telemetry.String("Error", err.Error()))
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		xTelemetry.Error(ctx, "Unexpected status code", telemetry.String("PodIP", podIP), telemetry.Int("StatusCode", resp.StatusCode))
-		return err
-	}
-
-	xTelemetry.Debug(ctx, "Refresh request sent to pod", telemetry.String("PodIP", podIP))
 	return nil
 }
