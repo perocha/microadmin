@@ -3,7 +3,7 @@ module github.com/perocha/microadmin
 go 1.22.2
 
 require (
-	github.com/perocha/goadapters v1.0.52
+	github.com/perocha/goadapters v1.0.57
 	github.com/perocha/goutils v1.0.42
 	k8s.io/api v0.30.0
 	k8s.io/apimachinery v0.30.0

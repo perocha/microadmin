@@ -49,15 +49,14 @@ func main() {
 	ctx := context.WithValue(context.Background(), telemetry.TelemetryContextKey, xTelemetry)
 
 	// Initialize the http adapter for publishing messages
-	httpSendAdapter, err := httpadapter.HttpSenderInit(ctx, "", "", "")
+	httpSendAdapter, err := httpadapter.HttpSenderInit(ctx)
 	if err != nil {
 		xTelemetry.Error(ctx, "Main::Failed to initialize HTTP Publisher", telemetry.String("Error", err.Error()))
 		panic(err)
 	}
 
 	// Initialize the http adapter for consuming messages
-	endpoint := httpadapter.NewEndpoint("localhost", "8080", "/")
-	httpServerAdapter, err := httpadapter.HTTPServerAdapterInit(ctx, endpoint)
+	httpServerAdapter, err := httpadapter.HTTPServerAdapterInit(ctx, cfg.HttpPortNumber)
 	if err != nil {
 		xTelemetry.Error(ctx, "Main::Failed to initialize HTTP Consumer", telemetry.String("Error", err.Error()))
 		panic(err)

@@ -18,12 +18,12 @@ import (
 
 type PodManagerImpl struct {
 	k8scli       *kubernetes.Clientset
-	httpSender   comms.CommsSystem
-	httpReceiver comms.CommsSystem
+	httpSender   comms.CommsSender
+	httpReceiver comms.CommsReceiver
 }
 
 // Initializes a new PodManagerImpl object
-func InitializePodManager(ctx context.Context, httpSender comms.CommsSystem, httpReceiver comms.CommsSystem) (*PodManagerImpl, error) {
+func InitializePodManager(ctx context.Context, httpSender comms.CommsSender, httpReceiver comms.CommsReceiver) (*PodManagerImpl, error) {
 	xTelemetry := telemetry.GetXTelemetryClient(ctx)
 
 	// First we try to load the Kubernetes configuration from the in-cluster configuration
@@ -50,19 +50,6 @@ func InitializePodManager(ctx context.Context, httpSender comms.CommsSystem, htt
 		return nil, err
 	}
 
-	// Initialize the HTTP server for receiving messages
-	receiverEndpoint := httpadapter.NewEndpoint("localhost", "8080", "/test")
-	err = httpReceiver.RegisterEndPoint(ctx, receiverEndpoint, RefreshConfiguration)
-	if err != nil {
-		return nil, err
-	}
-
-	anotherEndpoint := httpadapter.NewEndpoint("localhost", "8080", "/prueba")
-	err = httpReceiver.RegisterEndPoint(ctx, anotherEndpoint, TestCallback)
-	if err != nil {
-		return nil, err
-	}
-
 	return &PodManagerImpl{
 		k8scli:       clientset,
 		httpSender:   httpSender,
@@ -71,12 +58,53 @@ func InitializePodManager(ctx context.Context, httpSender comms.CommsSystem, htt
 }
 
 // RefreshConfiguration is a callback function that is called when a refresh request is received
-func RefreshConfiguration(w comms.ResponseWriter, r comms.Request) {
+func (p *PodManagerImpl) RefreshConfiguration(ctx context.Context, w comms.ResponseWriter, r comms.Request) {
+	xTelemetry := telemetry.GetXTelemetryClient(ctx)
+	xTelemetry.Info(ctx, "RefreshConfiguration")
+
+	// Get the application name from the request
+	appname := r.Header("appname")
+	xTelemetry.Debug(ctx, "RefreshConfiguration::Application name", telemetry.String("Appname", appname))
+
+	// List pods matching a specific label selector
+	pods, err := p.listPods(ctx, appname)
+	if err != nil {
+		xTelemetry.Error(ctx, "RefreshConfig::Failed to list pods", telemetry.String("Error", err.Error()))
+		w.WriteHeader(int(httpadapter.StatusInternalServerError))
+		w.Write([]byte("Failed to list pods"))
+		return
+	}
+
+	// Iterate over the pods and send a refresh request to each one
+	for _, pod := range pods.Items {
+		podIP := pod.Status.PodIP
+		if podIP == "" {
+			xTelemetry.Info(ctx, "Pod does not have an IP address", telemetry.String("PodName", pod.Name))
+			continue
+		}
+
+		msg := messaging.NewMessage("", nil, "status", "command", nil)
+		endpoint := httpadapter.NewEndpoint(podIP, "8081", "/refresh-config")
+		err := p.httpSender.SendRequest(ctx, endpoint, msg)
+		if err != nil {
+			xTelemetry.Error(ctx, "Failed to send refresh request to pod", telemetry.String("PodIP", podIP), telemetry.String("Error", err.Error()))
+			w.WriteHeader(int(httpadapter.StatusInternalServerError))
+			w.Write([]byte("Failed to send refresh request to pod"))
+			return
+		}
+
+		xTelemetry.Debug(ctx, "Refresh request sent to pod", telemetry.String("PodIP", podIP))
+	}
+
+	xTelemetry.Debug(ctx, "Refresh request sent to all pods", telemetry.String("Appname", appname))
 	w.WriteHeader(int(httpadapter.StatusOK))
-	w.Write([]byte("Hello World 1"))
+	w.Write([]byte("Refresh request sent to all pods"))
+	return
 }
 
-func TestCallback(w comms.ResponseWriter, r comms.Request) {
+func (p *PodManagerImpl) TestCallback(ctx context.Context, w comms.ResponseWriter, r comms.Request) {
+	xTelemetry := telemetry.GetXTelemetryClient(ctx)
+	xTelemetry.Info(ctx, "TestCallback")
 	w.WriteHeader(int(httpadapter.StatusOK))
 	w.Write([]byte("Hello World 2"))
 }
@@ -86,14 +114,25 @@ func (p *PodManagerImpl) Start(ctx context.Context, signals <-chan os.Signal) er
 	xTelemetry := telemetry.GetXTelemetryClient(ctx)
 	xTelemetry.Info(ctx, "PodManager started")
 
+	// Initialize the HTTP server for receiving messages
+	err := p.httpReceiver.RegisterEndPoint(ctx, "/refresh", p.RefreshConfiguration)
+	if err != nil {
+		return err
+	}
+
+	err = p.httpReceiver.RegisterEndPoint(ctx, "/prueba", p.TestCallback)
+	if err != nil {
+		return err
+	}
+
 	// Start the HTTP server for receiving messages
-	err := p.httpReceiver.Start(ctx)
+	err = p.httpReceiver.Start(ctx)
 	if err != nil {
 		xTelemetry.Error(ctx, "Failed to start HTTP server", telemetry.String("Error", err.Error()))
 		return err
 	}
 
-	//
+	// Wait for termination signals
 	for range signals {
 		// Termination signal received
 		xTelemetry.Info(ctx, "Received termination signal")
@@ -114,7 +153,7 @@ func (p *PodManagerImpl) Stop(ctx context.Context) {
 }
 
 // List all pods for a specific application
-func (p *PodManagerImpl) ListPods(ctx context.Context, appname string) (*v1.PodList, error) {
+func (p *PodManagerImpl) listPods(ctx context.Context, appname string) (*v1.PodList, error) {
 	xTelemetry := telemetry.GetXTelemetryClient(ctx)
 
 	// List pods matching a specific label selector
@@ -129,39 +168,4 @@ func (p *PodManagerImpl) ListPods(ctx context.Context, appname string) (*v1.PodL
 	//xTelemetry.Info(ctx, "Pods listed successfully", telemetry.Int("PodCount", len(pods.Items)))
 	xTelemetry.Info(ctx, "Pods listed successfully")
 	return pods, nil
-}
-
-// Send a refresh request to all pods for a specific application
-func (p *PodManagerImpl) RefreshConfig(ctx context.Context, appname string) error {
-	xTelemetry := telemetry.GetXTelemetryClient(ctx)
-
-	// List pods matching a specific label selector
-	pods, err := p.ListPods(ctx, appname)
-	if err != nil {
-		xTelemetry.Error(ctx, "RefreshConfig::Failed to list pods", telemetry.String("Error", err.Error()))
-		return err
-	}
-
-	// Iterate over the pods and send a refresh request to each one
-	for _, pod := range pods.Items {
-		podIP := pod.Status.PodIP
-		if podIP == "" {
-			xTelemetry.Info(ctx, "Pod does not have an IP address", telemetry.String("PodName", pod.Name))
-			continue
-		}
-
-		msg := messaging.NewMessage("", nil, "status", "command", nil)
-		endpoint := httpadapter.NewEndpoint(podIP, "8081", "/refresh-config")
-		p.httpSender.SetEndPoint(ctx, endpoint)
-		err := p.httpSender.SendRequest(ctx, msg)
-		if err != nil {
-			xTelemetry.Error(ctx, "Failed to send refresh request to pod", telemetry.String("PodIP", podIP), telemetry.String("Error", err.Error()))
-			return err
-		}
-
-		xTelemetry.Debug(ctx, "Refresh request sent to pod", telemetry.String("PodIP", podIP))
-	}
-
-	xTelemetry.Debug(ctx, "Refresh request sent to all pods", telemetry.String("Appname", appname))
-	return nil
 }
