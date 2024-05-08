@@ -100,11 +100,15 @@ func (p *PodManagerImpl) RefreshConfiguration(ctx context.Context, w comms.Respo
 	w.Write([]byte("Refresh request sent to all pods"))
 }
 
+// Dummy function for testing purposes
 func (p *PodManagerImpl) TestCallback(ctx context.Context, w comms.ResponseWriter, r comms.Request) {
 	xTelemetry := telemetry.GetXTelemetryClient(ctx)
 	xTelemetry.Debug(ctx, "TestCallback")
 	w.WriteHeader(int(httpadapter.StatusOK))
 	w.Write([]byte("Hello World 2"))
+
+	test := r.Body()
+	xTelemetry.Debug(ctx, "TestCallback::Body", telemetry.String("Body", string(test)))
 }
 
 // Start the pod manager
