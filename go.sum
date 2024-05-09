@@ -97,6 +97,8 @@ github.com/perocha/goadapters v1.0.58 h1:6g2Cr/y45gdPihSyoA2bnmfDcprhur2PvGMpWQw
 github.com/perocha/goadapters v1.0.58/go.mod h1:Xg7izeUp8oYXUXxtOxXW1OfyfAmrM0T3c8reGUXos9k=
 github.com/perocha/goadapters v1.0.59 h1:NFv6ZI+d7amGQ34Bvn7CUFRoYoxXrJuKpQO+0aTpyeE=
 github.com/perocha/goadapters v1.0.59/go.mod h1:Xg7izeUp8oYXUXxtOxXW1OfyfAmrM0T3c8reGUXos9k=
+github.com/perocha/goadapters v1.0.60 h1:vCDcB7GkCAluHUZae6gyMxG5//WBH60yznycaCP6fck=
+github.com/perocha/goadapters v1.0.60/go.mod h1:Xg7izeUp8oYXUXxtOxXW1OfyfAmrM0T3c8reGUXos9k=
 github.com/perocha/goutils v1.0.42 h1:vh8gJBe3SANryX9Xn+atw6ZNyMidapkhzk03SO7YzWQ=
 github.com/perocha/goutils v1.0.42/go.mod h1:50YqBN0KrdPJDIECQrQQyNnqJU6gu2jwTNo8++Mrk8o=
 github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c h1:+mdjkGKdHQG3305AYmdv1U2eRNDiU2ErMBj1gwrq8eQ=
